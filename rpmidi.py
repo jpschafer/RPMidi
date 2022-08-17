@@ -49,15 +49,19 @@ led = Pin(25, Pin.OUT)
 
 class RPMidi:
     def __init__(self):
+        # Initialize Attributes
+        self.is_file = False
+        self.is_mem = False
+        self.is_debug = False
+        
+        # Configure Channels
         self.ch_a_0 = PWM(Pin(16))
         self.ch_a_1 = PWM(Pin(17))
         self.ch_b_0 = PWM(Pin(18))
         self.ch_b_1 = PWM(Pin(19))
         self.ch_c_0 = PWM(Pin(20))
         self.stop_all()
-        self.is_file = False
-        self.is_mem = False
-
+        
     def _pitch(self, freq):
         return (2**((freq-69)/12))*440
 
@@ -83,7 +87,7 @@ class RPMidi:
             self.ch_c_0.duty_u16(self._duty_cycle(duty))
             
     def stop_channel(self, channel):
-        print("stopping channel %s" % (channel))
+        self.debug("stopping channel %s" % (channel))
         if channel == "a0":
             self.ch_a_0.duty_u16(0)
         elif channel == "a1":
@@ -95,20 +99,20 @@ class RPMidi:
         elif channel == "c0":
             self.ch_c_0.duty_u16(0)
     def stop_all(self):
-        print("stopping all")
+        self.debug("stopping all")
         self.ch_a_0.duty_u16(0)
         self.ch_a_1.duty_u16(0)
         self.ch_b_0.duty_u16(0)
         self.ch_b_1.duty_u16(0)
         self.ch_c_0.duty_u16(0)
     def _opcodes(self):
-        return [0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85,0xf0, 0xe0]
+        return [0x90, 0x91, 0x92, 0x93, 0x80, 0x81, 0x82, 0x83,0xf0, 0xe0]
     
     def _play_note_opcodes(self):
-        return [0x90, 0x91, 0x92, 0x93, 0x94, 0x95]
+        return [0x90, 0x91, 0x92, 0x93]
 
     def _stop_note_opcodes(self):
-        return [0x80, 0x81, 0x82, 0x83, 0x84, 0x85]
+        return [0x80, 0x81, 0x82, 0x83]
     
     def _end_song_opcodes(self):
         return [0xf0, 0xe0]
@@ -125,6 +129,16 @@ class RPMidi:
             return False # Fix this eventually obviously
         elif self.is_mem:
             index >= len(music)
+
+    def adjust_index(self, music, index):
+        if self.is_file:
+            music.seek(-1, 1)
+        #elif self.is_mem:
+           # print
+            # for now do nothing.
+    def debug(self, statement):
+        if self.is_debug:
+            print(statement)
 
     def play_song(self, music):
 
@@ -144,13 +158,13 @@ class RPMidi:
         
         while not done:
             if self.check_oo_range(music, index):
-                print("out of range while reading opcode")
+                self.debug("out of range while reading opcode")
                 done = True
                 break
             else:
                 # Read opcode
                 opcode_byte = self.read_byte(music, index)
-                print(opcode_byte)
+                self.debug(opcode_byte)
                 if opcode_byte in self._opcodes():
                     opcode = opcode_byte
                     
@@ -169,8 +183,9 @@ class RPMidi:
                             if not tmp_byte in self._opcodes():
                                 tmp.append(tmp_byte)
                                 tmp_index += 1
-                                print("reading...")
+                                self.debug("reading...got num %d" % tmp_byte)
                             else:
+                                self.adjust_index(music, index)
                                 isReading = False
                     
                     # Execute instruction
@@ -190,10 +205,10 @@ class RPMidi:
                             
                             if len(tmp) == 3:
                                 delay = ((tmp[1]*256)+(tmp[2]))
-                                print("sleeping for %d" % (delay))
+                                self.debug("sleeping for %d ms" % (delay))
                                 utime.sleep_ms(delay)
                         else:
-                            print("expecting at least one entry in tmp, got nothing")
+                            self.debug("expecting at least one entry in tmp, got nothing")
                             done = True
                             break
                         index += 1
@@ -212,7 +227,7 @@ class RPMidi:
                             self.stop_channel("c0")  
                         if len(tmp) >= 2:
                             delay = ((tmp[0]*256)+(tmp[1]))
-                            print("sleeping for %d ms" % (delay))
+                            self.debug("sleeping for %d ms" % (delay))
                             utime.sleep_ms(delay)
                         index += 1
                         
