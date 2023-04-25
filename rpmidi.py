@@ -69,11 +69,16 @@ class RPMidi:
             0x96: PWM(Pin(22))
         }
 
+        # Must be same frequency if on same slice (A/B overlap unfortunately)
         self.channel_leds = {
             0x90: PWM(Pin(18)),  # PWM_A[1] White LED w/ 15 Ohm Resistor
             0x91: PWM(Pin(20)),  # PWM_A[2] Blue LED w/ 15 Ohm Resistor
             0x92: PWM(Pin(21)),  # PWM_B[2] Yellow LED w/ 47 Ohm Resistor
-            0x93: PWM(Pin(26))  # PWM_A[5] Green LED w/ 15 Ohm Resistor
+            0x93: PWM(Pin(26)),  # PWM_A[5] Green LED w/ 15 Ohm Resistor
+            0x94: PWM(Pin(17)),  # PWM_B[0] RED LED w/ 47 Ohm Resistor
+            0x95: PWM(Pin(25)),
+            0x96: PWM(Pin(26))
+
         }
         
         self.stop_all()
@@ -89,7 +94,7 @@ class RPMidi:
         self.channels[channel].freq(round(self._pitch(note)))
         self.channels[channel].duty_u16(self._duty_cycle(duty))
 
-        self.channel_leds[channel].freq(1000)
+        self.channel_leds[channel].freq(round(self._pitch(note))) # This is incase the LED is not on the same Slice, freq must be same or collision will occur
         self.channel_leds[channel].duty_u16(self._duty_cycle(duty))
 
     def stop_channel(self, channel):
@@ -97,6 +102,8 @@ class RPMidi:
         #TODO: Add Check
         # Grab Channel By Equivalent Play Opcode
         self.channels[channel + 0x10].duty_u16(0)
+        self.channel_leds[channel + 0x10].duty_u16(0)
+
 
     def stop_all(self):
         self.debug("stopping all")
@@ -159,6 +166,14 @@ class RPMidi:
         while utime.ticks_diff(utime.ticks_ms(), start) < milliseconds:
             pass
     
+    def is_opcode(self, byte):
+        if byte in self._opcodes():
+            return True
+        elif self.get_normalized_bit(byte, 7): # Delay Command
+            return True
+        else:
+            return False
+    
     def delay_inaccurate(self, milliseconds):
         now = utime.time() * 1000
        # print('start time in milliseconds %f' % now)
@@ -170,6 +185,12 @@ class RPMidi:
         while now < end:
             #print('current time in milliseconds %f' % now)
             now = utime.time() * 1000
+
+    # https://realpython.com/python-bitwise-operators/#getting-a-bit
+    def get_normalized_bit(self, value, bit_index):
+        normalized_bit = (value >> bit_index) & 1
+        print("value of most significant bit: %d" % normalized_bit)
+        return normalized_bit
 
     def play_song(self, music):
 
@@ -199,7 +220,7 @@ class RPMidi:
                 # Read opcode
                 opcode_byte = self.read_byte(music, index)
                 self.debug(opcode_byte)
-                if opcode_byte in self._opcodes():
+                if self.is_opcode(opcode_byte):
                     opcode = opcode_byte
                     
                     # Scan for timing data
@@ -215,7 +236,7 @@ class RPMidi:
                             break
                         else:
                             tmp_byte = self.read_byte(music, index + tmp_index)
-                            if not tmp_byte in self._opcodes():
+                            if not tmp_byte in self._opcodes(): # What if the delay 2nd byte is 0x82 for example, oof! Collision!
                                 tmp.append(tmp_byte)
                                 tmp_index += 1
                                 self.debug("reading...got num %s" % hex(tmp_byte))
@@ -233,11 +254,17 @@ class RPMidi:
                             if opcode >= 0x90 and opcode <= 0x96:
                                 self.play_note(tmp[0], opcode, 50)
                             
+                            if len(tmp) == 2:
+                                print('weird! %d' % tmp[1])
+                                print('weirdint %d' % tmp[1]*256)
+                                print("oh my god LOL")
                             if len(tmp) == 3:
                                 delay = ((tmp[1]*256)+(tmp[2]))
                                 print("sleeping for %d ms" % (delay))
                                 self.delay(delay)
                                 #utime.sleep_ms(delay)
+                            if len(tmp) > 3:
+                                print("good lord!")
                         else:
                             self.debug("expecting at least one entry in tmp, got nothing")
                             self.debug("Next byte would have been %s" % (hex(self.read_byte(music, index + 1))))
@@ -267,5 +294,7 @@ class RPMidi:
                             print("Loop Song!")
                             done = False
                             index = 0 # Song is looping, go back to beginning of song.
+                    elif get_normalized_bit(opcode_byte, 7): # Delay Command
+                        print ("Delay!")
                 else:
                     index += 1
