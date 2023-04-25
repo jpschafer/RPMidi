@@ -169,10 +169,14 @@ class RPMidi:
     def is_opcode(self, byte):
         if byte in self._opcodes():
             return True
-        elif self.get_normalized_bit(byte, 7): # Delay Command
+        elif self.is_delay(byte): # Delay Command
             return True
         else:
             return False
+        
+    def is_delay(self, byte):
+        # If any bit of the most significant hex is 1, this can't be a delay (if our ordering logic is right)
+        return not (self.get_normalized_bit(byte, 7) or self.get_normalized_bit(byte, 6) or self.get_normalized_bit(byte, 5) or self.get_normalized_bit(byte, 4))
     
     def delay_inaccurate(self, milliseconds):
         now = utime.time() * 1000
@@ -223,65 +227,52 @@ class RPMidi:
                 if self.is_opcode(opcode_byte):
                     opcode = opcode_byte
                     
-                    # Scan for timing data
-                    isReading = True
-                    tmp = []
-                    tmp_index = 1
+                    # # Scan for timing data
+                    # isReading = True
+                    # tmp = []
+                    # tmp_index = 1
                     
-                    # Read next bytes for timing info
-                    while isReading: 
-                        if self.check_oo_range(music, (index + tmp_index)):
-                            self.debug("We are done!")
-                            done = True
-                            break
-                        else:
-                            tmp_byte = self.read_byte(music, index + tmp_index)
-                            if not tmp_byte in self._opcodes(): # What if the delay 2nd byte is 0x82 for example, oof! Collision!
-                                tmp.append(tmp_byte)
-                                tmp_index += 1
-                                self.debug("reading...got num %s" % hex(tmp_byte))
-                            else:
-                                self.debug("Last Read was opcode %s Going back..." % hex(tmp_byte))
-                                self.adjust_index(music, index)
-                                isReading = False
+                    # # Read next bytes for timing info
+                    # while isReading: 
+                    #     if self.check_oo_range(music, (index + tmp_index)):
+                    #         self.debug("We are done!")
+                    #         done = True
+                    #         break
+                    #     else:
+                    #         tmp_byte = self.read_byte(music, index + tmp_index)
+                    #         if not self.is_opcode(tmp_byte): #Process delay as a separate command
+                    #             tmp.append(tmp_byte)
+                    #             tmp_index += 1
+                    #             self.debug("reading...got num %s" % hex(tmp_byte))
+                    #         else:
+                    #             self.debug("Last Read was opcode %s Going back..." % hex(tmp_byte))
+                    #             self.adjust_index(music, index)
+                    #             isReading = False
                     
                     # Execute instruction
                     self.debug("About to execute %s" % opcode);
                     if opcode in self._play_note_opcodes():
                         # Play voice and goto next instruction or play and wait for x milliseconds
-                        if len(tmp) > 0:
-                            
-                            if opcode >= 0x90 and opcode <= 0x96:
-                                self.play_note(tmp[0], opcode, 50)
-                            
-                            if len(tmp) == 2:
-                                print('weird! %d' % tmp[1])
-                                print('weirdint %d' % tmp[1]*256)
-                                print("oh my god LOL")
-                            if len(tmp) == 3:
-                                delay = ((tmp[1]*256)+(tmp[2]))
-                                print("sleeping for %d ms" % (delay))
-                                self.delay(delay)
-                                #utime.sleep_ms(delay)
-                            if len(tmp) > 3:
-                                print("good lord!")
-                        else:
-                            self.debug("expecting at least one entry in tmp, got nothing")
-                            self.debug("Next byte would have been %s" % (hex(self.read_byte(music, index + 1))))
-                            self.print_pointer(music, index)
-                            done = True
-                            self.stop_all()
-                            break
-                        index += 1
+                        if opcode >= 0x90 and opcode <= 0x96:
+                            self.play_note(self.read_byte(music, index + 1), opcode, 50)
+                            index += 2
+#                        else:
+#                            self.debug("expecting at least one entry in tmp, got nothing")
+#                            self.debug("Next byte would have been %s" % (hex(self.read_byte(music, index + 1))))
+#                            self.print_pointer(music, index)
+#                            done = True
+#                            self.stop_all()
+#                            break
+#                        index += 1
                         
                     elif opcode in self._stop_note_opcodes():
                         # Mute voice or mute and wait for x milliseconds
                         if opcode >= 0x80 and opcode <= 0x8E:
                             self.stop_channel(opcode) 
-                        if len(tmp) >= 2:
-                            delay = ((tmp[0]*256)+(tmp[1]))
-                            self.debug("sleeping for %d ms" % (delay))
-                            self.delay(delay)
+                   #     if len(tmp) >= 2:
+                    #        delay = ((tmp[0]*256)+(tmp[1]))
+                    #        self.debug("sleeping for %d ms" % (delay))
+                    #        self.delay(delay)
                         index += 1
                         
                     elif opcode in self._end_song_opcodes():
@@ -294,7 +285,14 @@ class RPMidi:
                             print("Loop Song!")
                             done = False
                             index = 0 # Song is looping, go back to beginning of song.
-                    elif get_normalized_bit(opcode_byte, 7): # Delay Command
+                    elif self.is_delay(opcode): # Delay Command
                         print ("Delay!")
+                        delay = (opcode*256)+(self.read_byte(music, index + 1))
+                        print("sleeping for %d ms" % (delay))
+                        self.delay(delay)
+                                #utime.sleep_ms(delay)
+                        index += 2
+                    else:
+                        print("Byte is busted %s" % hex(opcode))
                 else:
                     index += 1
