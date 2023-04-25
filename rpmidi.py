@@ -193,7 +193,7 @@ class RPMidi:
     # https://realpython.com/python-bitwise-operators/#getting-a-bit
     def get_normalized_bit(self, value, bit_index):
         normalized_bit = (value >> bit_index) & 1
-        print("value of most significant bit: %d" % normalized_bit)
+        #self.debug("value of most significant bit: %d" % normalized_bit)
         return normalized_bit
 
     def play_song(self, music):
@@ -214,7 +214,6 @@ class RPMidi:
         elif type(music) == list:
             self.is_mem = True
         
-        print("what is going on?!")
         while not done:
             if self.check_oo_range(music, index):
                 self.debug("out of range while reading opcode")
@@ -286,9 +285,9 @@ class RPMidi:
                             done = False
                             index = 0 # Song is looping, go back to beginning of song.
                     elif self.is_delay(opcode): # Delay Command
-                        print ("Delay!")
+                        self.debug("Delay!")
                         delay = (opcode*256)+(self.read_byte(music, index + 1))
-                        print("sleeping for %d ms" % (delay))
+                        self.debug("sleeping for %d ms" % (delay))
                         self.delay(delay)
                                 #utime.sleep_ms(delay)
                         index += 2
