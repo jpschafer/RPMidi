@@ -68,6 +68,14 @@ class RPMidi:
             0x95: PWM(Pin(21)),
             0x96: PWM(Pin(22))
         }
+        
+        self.channel_leds = {
+            0x90: PWM(Pin(18)),  # PWM_A[1] White LED w/ 15 Ohm Resistor
+            0x91: PWM(Pin(20)),  # PWM_A[2] Blue LED w/ 15 Ohm Resistor
+            0x92: PWM(Pin(21)),  # PWM_B[2] Yellow LED w/ 47 Ohm Resistor
+            0x93: PWM(Pin(26))  # PWM_A[5] Green LED w/ 15 Ohm Resistor
+        }
+        
         self.stop_all()
         
     def _pitch(self, freq):
@@ -80,16 +88,23 @@ class RPMidi:
         led.toggle()
         self.channels[channel].freq(round(self._pitch(note)))
         self.channels[channel].duty_u16(self._duty_cycle(duty))
+        
+        self.channel_leds[channel].freq(1000)
+        self.channel_leds[channel].duty_u16(self._duty_cycle(duty))
+        
             
     def stop_channel(self, channel):
         self.debug("stopping channel %s" % (hex(channel)))
         #TODO: Add Check
         # Grab Channel By Equivalent Play Opcode
         self.channels[channel + 0x10].duty_u16(0)
+        self.channel_leds[channel + 0x10].duty_u16(0)
 
     def stop_all(self):
         self.debug("stopping all")
         for channel in self.channels.values():
+            channel.duty_u16(0)
+        for channel in self.channel_leds.values():
             channel.duty_u16(0)
 
     def _opcodes(self):
