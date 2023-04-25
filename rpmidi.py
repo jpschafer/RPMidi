@@ -45,6 +45,8 @@ IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ========================================================================================================
 """
 
+import utime
+
 led = Pin(25, Pin.OUT)
 
 class RPMidi:
@@ -52,7 +54,7 @@ class RPMidi:
         # Initialize Attributes
         self.is_file = False
         self.is_mem = False
-        self.is_debug = True
+        self.is_debug = False
         
         self.length = 0
         
@@ -139,11 +141,11 @@ class RPMidi:
         return size
     
     def delay(self, milliseconds):
-        now = int(time.time()*1000.0)
+        now = utime.time_ns() / 1000000
         start = now
-        end = now + milliseconds
+        end = start + milliseconds
         while now < end:
-            now = int(time.time()*1000.0)
+            now = utime.time_ns() / 1000000
 
     def play_song(self, music):
 
@@ -163,6 +165,7 @@ class RPMidi:
         elif type(music) == list:
             self.is_mem = True
         
+        print("what is going on?!")
         while not done:
             if self.check_oo_range(music, index):
                 self.debug("out of range while reading opcode")
@@ -208,7 +211,7 @@ class RPMidi:
                             
                             if len(tmp) == 3:
                                 delay = ((tmp[1]*256)+(tmp[2]))
-                                self.debug("sleeping for %d ms" % (delay))
+                                print("sleeping for %d ms" % (delay))
                                 #self.delay(delay)
                                 utime.sleep_ms(delay)
                         else:
