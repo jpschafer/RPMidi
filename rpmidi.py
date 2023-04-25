@@ -68,7 +68,7 @@ class RPMidi:
             0x95: PWM(Pin(21)),
             0x96: PWM(Pin(22))
         }
-        
+
         self.channel_leds = {
             0x90: PWM(Pin(18)),  # PWM_A[1] White LED w/ 15 Ohm Resistor
             0x91: PWM(Pin(20)),  # PWM_A[2] Blue LED w/ 15 Ohm Resistor
@@ -88,17 +88,15 @@ class RPMidi:
         led.toggle()
         self.channels[channel].freq(round(self._pitch(note)))
         self.channels[channel].duty_u16(self._duty_cycle(duty))
-        
+
         self.channel_leds[channel].freq(1000)
         self.channel_leds[channel].duty_u16(self._duty_cycle(duty))
-        
-            
+
     def stop_channel(self, channel):
         self.debug("stopping channel %s" % (hex(channel)))
         #TODO: Add Check
         # Grab Channel By Equivalent Play Opcode
         self.channels[channel + 0x10].duty_u16(0)
-        self.channel_leds[channel + 0x10].duty_u16(0)
 
     def stop_all(self):
         self.debug("stopping all")
@@ -156,11 +154,22 @@ class RPMidi:
         return size
     
     def delay(self, milliseconds):
-        now = utime.time_ns() / 1000000
+        start = utime.ticks_ms();
+        
+        while utime.ticks_diff(utime.ticks_ms(), start) < milliseconds:
+            pass
+    
+    def delay_inaccurate(self, milliseconds):
+        now = utime.time() * 1000
+       # print('start time in milliseconds %f' % now)
+        
         start = now
-        end = start + milliseconds
+        end = now + milliseconds
+        #print('end time in milliseconds %f' % end)
+
         while now < end:
-            now = utime.time_ns() / 1000000
+            #print('current time in milliseconds %f' % now)
+            now = utime.time() * 1000
 
     def play_song(self, music):
 
@@ -227,8 +236,8 @@ class RPMidi:
                             if len(tmp) == 3:
                                 delay = ((tmp[1]*256)+(tmp[2]))
                                 print("sleeping for %d ms" % (delay))
-                                #self.delay(delay)
-                                utime.sleep_ms(delay)
+                                self.delay(delay)
+                                #utime.sleep_ms(delay)
                         else:
                             self.debug("expecting at least one entry in tmp, got nothing")
                             self.debug("Next byte would have been %s" % (hex(self.read_byte(music, index + 1))))
@@ -245,7 +254,7 @@ class RPMidi:
                         if len(tmp) >= 2:
                             delay = ((tmp[0]*256)+(tmp[1]))
                             self.debug("sleeping for %d ms" % (delay))
-                            utime.sleep_ms(delay)
+                            self.delay(delay)
                         index += 1
                         
                     elif opcode in self._end_song_opcodes():
