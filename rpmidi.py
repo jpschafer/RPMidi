@@ -52,14 +52,20 @@ class RPMidi:
         # Initialize Attributes
         self.is_file = False
         self.is_mem = False
-        self.is_debug = False
+        self.is_debug = True
+        
+        self.length = 0
         
         # Configure Channels
-        self.ch_a_0 = PWM(Pin(16))
-        self.ch_a_1 = PWM(Pin(17))
-        self.ch_b_0 = PWM(Pin(18))
-        self.ch_b_1 = PWM(Pin(19))
-        self.ch_c_0 = PWM(Pin(20))
+        self.channels = {
+            0x90: PWM(Pin(0)),
+            0x91: PWM(Pin(3)),
+            0x92: PWM(Pin(15)),
+            0x93: PWM(Pin(11)),
+            0x94: PWM(Pin(23)),
+            0x95: PWM(Pin(21)),
+            0x96: PWM(Pin(22))
+        }
         self.stop_all()
         
     def _pitch(self, freq):
@@ -70,41 +76,20 @@ class RPMidi:
 
     def play_note(self, note, channel, duty):
         led.toggle()
-        if channel == "a0":
-            self.ch_a_0.freq(round(self._pitch(note)))
-            self.ch_a_0.duty_u16(self._duty_cycle(duty))
-        elif channel == "a1":
-            self.ch_a_1.freq(round(self._pitch(note)))
-            self.ch_a_1.duty_u16(self._duty_cycle(duty))
-        elif channel == "b0":
-            self.ch_b_0.freq(round(self._pitch(note)))
-            self.ch_b_0.duty_u16(self._duty_cycle(duty))
-        elif channel == "b1":
-            self.ch_b_1.freq(round(self._pitch(note)))
-            self.ch_b_1.duty_u16(self._duty_cycle(duty))
-        elif channel == "c0":
-            self.ch_c_0.freq(round(self._pitch(note)))
-            self.ch_c_0.duty_u16(self._duty_cycle(duty))
+        self.channels[channel].freq(round(self._pitch(note)))
+        self.channels[channel].duty_u16(self._duty_cycle(duty))
             
     def stop_channel(self, channel):
-        self.debug("stopping channel %s" % (channel))
-        if channel == "a0":
-            self.ch_a_0.duty_u16(0)
-        elif channel == "a1":
-            self.ch_a_1.duty_u16(0)
-        elif channel == "b0":
-            self.ch_b_0.duty_u16(0)
-        elif channel == "b1":
-            self.ch_b_1.duty_u16(0)
-        elif channel == "c0":
-            self.ch_c_0.duty_u16(0)
+        self.debug("stopping channel %s" % (hex(channel)))
+        #TODO: Add Check
+        # Grab Channel By Equivalent Play Opcode
+        self.channels[channel + 0x10].duty_u16(0)
+
     def stop_all(self):
         self.debug("stopping all")
-        self.ch_a_0.duty_u16(0)
-        self.ch_a_1.duty_u16(0)
-        self.ch_b_0.duty_u16(0)
-        self.ch_b_1.duty_u16(0)
-        self.ch_c_0.duty_u16(0)
+        for channel in self.channels.values():
+            channel.duty_u16(0)
+
     def _opcodes(self):
         return [0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0xf0, 0xe0]
     
@@ -126,7 +111,7 @@ class RPMidi:
         
     def check_oo_range(self, music, index):
         if self.is_file:
-            return False # Fix this eventually obviously
+            return index >= self.length # We probably shouldn't be relying on this for a bad for loop array
         elif self.is_mem:
             index >= len(music)
 
@@ -139,6 +124,26 @@ class RPMidi:
     def debug(self, statement):
         if self.is_debug:
             print(statement)
+            
+    def print_pointer(self, music, index):
+        if self.is_file:
+            self.debug("File pointer was at: %s" % (music.tell()))
+        elif self.is_mem:
+            self.debug("Index was at: %d" % (index))
+
+    def seek_size(self, f):
+        pos = f.tell()
+        f.seek(0, 2) # 2 means relative to file's end
+        size = f.tell()
+        f.seek(pos) # back to where we were
+        return size
+    
+    def delay(self, milliseconds):
+        now = int(time.time()*1000.0)
+        start = now
+        end = now + milliseconds
+        while now < end:
+            now = int(time.time()*1000.0)
 
     def play_song(self, music):
 
@@ -147,12 +152,14 @@ class RPMidi:
         index = 0
         isReading = False
         opcode = 0x00
-            
+        
         self.stop_all() # Silence any existing music
         utime.sleep(1)
             
         if type(music) == io.FileIO:
             self.is_file = True
+            self.length = self.seek_size(music)
+            
         elif type(music) == list:
             self.is_mem = True
         
@@ -176,6 +183,7 @@ class RPMidi:
                     # Read next bytes for timing info
                     while isReading: 
                         if self.check_oo_range(music, (index + tmp_index)):
+                            self.debug("We are done!")
                             done = True
                             break
                         else:
@@ -183,48 +191,39 @@ class RPMidi:
                             if not tmp_byte in self._opcodes():
                                 tmp.append(tmp_byte)
                                 tmp_index += 1
-                                self.debug("reading...got num %d" % tmp_byte)
+                                self.debug("reading...got num %s" % hex(tmp_byte))
                             else:
+                                self.debug("Last Read was opcode %s Going back..." % hex(tmp_byte))
                                 self.adjust_index(music, index)
                                 isReading = False
                     
                     # Execute instruction
+                    self.debug("About to execute %s" % opcode);
                     if opcode in self._play_note_opcodes():
                         # Play voice and goto next instruction or play and wait for x milliseconds
                         if len(tmp) > 0:
-                            if opcode == 0x90:
-                                self.play_note(tmp[0], "a0", 50)
-                            elif opcode == 0x91:
-                                self.play_note(tmp[0], "b0", 50)
-                            elif opcode == 0x92:
-                                self.play_note(tmp[0], "a1", 50)
-                            elif opcode == 0x93:
-                                self.play_note(tmp[0], "b1", 50)
-                            elif opcode == 0x94:
-                                self.play_note(tmp[0], "c0", 50)
+                            
+                            if opcode >= 0x90 and opcode <= 0x96:
+                                self.play_note(tmp[0], opcode, 50)
                             
                             if len(tmp) == 3:
                                 delay = ((tmp[1]*256)+(tmp[2]))
                                 self.debug("sleeping for %d ms" % (delay))
+                                #self.delay(delay)
                                 utime.sleep_ms(delay)
                         else:
                             self.debug("expecting at least one entry in tmp, got nothing")
+                            self.debug("Next byte would have been %s" % (hex(self.read_byte(music, index + 1))))
+                            self.print_pointer(music, index)
                             done = True
+                            self.stop_all()
                             break
                         index += 1
                         
                     elif opcode in self._stop_note_opcodes():
                         # Mute voice or mute and wait for x milliseconds
-                        if opcode == 0x80:
-                            self.stop_channel("a0")
-                        elif opcode == 0x81:
-                            self.stop_channel("b0")
-                        elif opcode == 0x82:
-                            self.stop_channel("a1")
-                        elif opcode == 0x83:
-                            self.stop_channel("b1")
-                        elif opcode == 0x84:
-                            self.stop_channel("c0")  
+                        if opcode >= 0x80 and opcode <= 0x8E:
+                            self.stop_channel(opcode) 
                         if len(tmp) >= 2:
                             delay = ((tmp[0]*256)+(tmp[1]))
                             self.debug("sleeping for %d ms" % (delay))
@@ -234,9 +233,11 @@ class RPMidi:
                     elif opcode in self._end_song_opcodes():
                         # End or loop the song
                         if opcode == 0xf0: # Song is over, stop playing.
+                            print("song is over")
                             done = True
                             break
                         else:
+                            print("Loop Song!")
                             done = False
                             index = 0 # Song is looping, go back to beginning of song.
                 else:
