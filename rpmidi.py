@@ -62,23 +62,21 @@ class RPMidi:
         self.channels = {
             0x90: PWM(Pin(0)),
             0x91: PWM(Pin(3)),
-            0x92: PWM(Pin(15)),
+            0x92: PWM(Pin(6)),
             0x93: PWM(Pin(11)),
-            0x94: PWM(Pin(23)),
+            0x94: PWM(Pin(15)),
             0x95: PWM(Pin(21)),
             0x96: PWM(Pin(22))
         }
 
-        # Must be same frequency if on same slice (A/B overlap unfortunately)
         self.channel_leds = {
-            0x90: PWM(Pin(18)),  # PWM_A[1] White LED w/ 15 Ohm Resistor
-            0x91: PWM(Pin(20)),  # PWM_A[2] Blue LED w/ 15 Ohm Resistor
-            0x92: PWM(Pin(21)),  # PWM_B[2] Yellow LED w/ 47 Ohm Resistor
-            0x93: PWM(Pin(26)),  # PWM_A[5] Green LED w/ 15 Ohm Resistor
+            0x90: PWM(Pin(26)),  # PWM_A[5] Green LED w/ 15 Ohm Resistor
+            0x91: PWM(Pin(21)),  # PWM_B[2] Yellow LED w/ 47 Ohm Resistor
+            0x92: PWM(Pin(20)),  # PWM_A[2] Blue LED w/ 15 Ohm Resistor
+            0x93: PWM(Pin(18)),  # PWM_B[0] RED LED w/ 47 Ohm Resistor
             0x94: PWM(Pin(17)),  # PWM_B[0] RED LED w/ 47 Ohm Resistor
             0x95: PWM(Pin(25)),
             0x96: PWM(Pin(26))
-
         }
         
         self.stop_all()
@@ -95,7 +93,7 @@ class RPMidi:
         self.channels[channel].duty_u16(self._duty_cycle(duty))
 
         self.channel_leds[channel].freq(round(self._pitch(note))) # This is incase the LED is not on the same Slice, freq must be same or collision will occur
-        self.channel_leds[channel].duty_u16(self._duty_cycle(duty))
+        self.channel_leds[channel].duty_u16(self._duty_cycle(duty/16))
 
     def stop_channel(self, channel):
         self.debug("stopping channel %s" % (hex(channel)))
